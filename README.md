@@ -1,4 +1,4 @@
-[README.md](https://github.com/user-attachments/files/33924375/README.md)
+[README.md](https://github.com/user-attachments/files/33924847/README.md)
 # Watermark Foto
 
 Pilih foto dari galeri, tambahkan watermark jam, tanggal, dan lokasi (gaya Timemark), lalu simpan ke galeri.
@@ -20,3 +20,7 @@ Logo dipilih dari galeri (PNG transparan paling bagus), diletakkan di sebelah ki
 ## Banyak foto sekaligus
 Tombol pilih foto menerima banyak foto. Semua foto memakai pengaturan watermark yang sama (judul, jam, lokasi, logo, dll.).
 Tap thumbnail untuk melihat pratinjau tiap foto. Tombol "Simpan semua" memproses satu per satu dan menyimpan ke album "Watermark Foto".
+
+## Lihat galeri & bagikan
+- **Lihat galeri**: membuka aplikasi galeri HP.
+- **Bagikan**: membuat hasil watermark (semua foto yang dipilih) lalu membuka menu bagikan HP (WhatsApp, Telegram, email, dll.). Foto tidak otomatis masuk galeri kecuali Anda menekan Simpan.
