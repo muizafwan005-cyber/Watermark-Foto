@@ -1,11 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:gal/gal.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -122,6 +122,44 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  /// Alamat dari koordinat lewat OpenStreetMap Nominatim (butuh internet).
+  Future<String?> _reverseGeocode(double lat, double lng) async {
+    final client = HttpClient()..userAgent = 'WatermarkFotoApp/1.0';
+    try {
+      final uri = Uri.parse(
+          'https://nominatim.openstreetmap.org/reverse?format=jsonv2'
+          '&addressdetails=1&accept-language=id&lat=$lat&lon=$lng');
+      final req = await client.getUrl(uri).timeout(const Duration(seconds: 10));
+      final res = await req.close().timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) return null;
+      final body = await res.transform(utf8.decoder).join();
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      final a = (json['address'] as Map?)?.cast<String, dynamic>() ?? {};
+      String? pick(List<String> keys) {
+        for (final k in keys) {
+          final v = a[k];
+          if (v is String && v.trim().isNotEmpty) return v;
+        }
+        return null;
+      }
+
+      final parts = <String?>[
+        pick(['village', 'suburb', 'neighbourhood', 'hamlet']),
+        pick(['municipality', 'city_district', 'town']),
+        pick(['county', 'city', 'regency']),
+        pick(['state']),
+        pick(['postcode']),
+      ].whereType<String>().toList();
+      if (parts.isNotEmpty) return parts.join(', ');
+      final dn = json['display_name'];
+      return dn is String ? dn : null;
+    } catch (_) {
+      return null;
+    } finally {
+      client.close();
+    }
+  }
+
   Future<void> _fetchLocation() async {
     setState(() => _loadingLoc = true);
     try {
@@ -146,23 +184,8 @@ class _HomePageState extends State<HomePage> {
       _lng = pos.longitude;
       var text =
           '${pos.latitude.toStringAsFixed(6)}, ${pos.longitude.toStringAsFixed(6)}';
-      try {
-        final marks =
-            await placemarkFromCoordinates(pos.latitude, pos.longitude);
-        if (marks.isNotEmpty) {
-          final p = marks.first;
-          final parts = <String?>[
-            p.subLocality,
-            p.locality,
-            p.subAdministrativeArea,
-            p.administrativeArea,
-            p.postalCode,
-          ].where((e) => e != null && e.trim().isNotEmpty).cast<String>();
-          if (parts.isNotEmpty) text = parts.join(', ');
-        }
-      } catch (_) {
-        // Tanpa internet: pakai koordinat saja.
-      }
+      final addr = await _reverseGeocode(pos.latitude, pos.longitude);
+      if (addr != null) text = addr; // tanpa internet: tetap koordinat
       _addressCtrl.text = text;
     } catch (e) {
       _toast('Gagal ambil lokasi: $e');
