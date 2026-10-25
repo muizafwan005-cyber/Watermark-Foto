@@ -8,6 +8,8 @@ import 'package:flutter/rendering.dart';
 import 'package:gal/gal.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
@@ -220,18 +222,19 @@ class _HomePageState extends State<HomePage> {
         _manualTime.day, t.hour, t.minute));
   }
 
-  Future<void> _save() async {
-    if (_photos.isEmpty) return;
+  /// Render semua foto jadi PNG sementara (dan simpan ke galeri bila diminta).
+  Future<List<String>> _renderAll({required bool toGallery}) async {
     final startIndex = _index;
     final stamp = DateTime.now().millisecondsSinceEpoch;
-    var ok = 0;
+    final dir = await getTemporaryDirectory();
+    final paths = <String>[];
     setState(() {
       _now = DateTime.now(); // jam sama untuk semua foto
       _saving = true;
       _progress = 0;
     });
     try {
-      if (!await Gal.hasAccess()) await Gal.requestAccess();
+      if (toGallery && !await Gal.hasAccess()) await Gal.requestAccess();
       for (var i = 0; i < _photos.length; i++) {
         await precacheImage(FileImage(_photos[i]), context);
         setState(() {
@@ -242,23 +245,23 @@ class _HomePageState extends State<HomePage> {
         await Future.delayed(const Duration(milliseconds: 80));
         final boundary = _boundaryKey.currentContext!.findRenderObject()
             as RenderRepaintBoundary;
-        final decoded = await decodeImageFromList(await _photos[i].readAsBytes());
+        final decoded =
+            await decodeImageFromList(await _photos[i].readAsBytes());
         final widthPx = decoded.width.toDouble();
         decoded.dispose();
         final ratio = (widthPx / boundary.size.width).clamp(1.0, 4.0);
         final image = await boundary.toImage(pixelRatio: ratio);
         final data = await image.toByteData(format: ui.ImageByteFormat.png);
         image.dispose();
-        await Gal.putImageBytes(
-          data!.buffer.asUint8List(),
-          album: 'Watermark Foto',
-          name: 'wm_${stamp}_${i + 1}',
-        );
-        ok++;
+        final bytes = data!.buffer.asUint8List();
+        final f = File('${dir.path}/wm_${stamp}_${i + 1}.png');
+        await f.writeAsBytes(bytes);
+        paths.add(f.path);
+        if (toGallery) {
+          await Gal.putImageBytes(bytes,
+              album: 'Watermark Foto', name: 'wm_${stamp}_${i + 1}');
+        }
       }
-      _toast('$ok foto tersimpan di galeri (album Watermark Foto)');
-    } catch (e) {
-      _toast('Gagal menyimpan (berhasil $ok dari ${_photos.length}): $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -266,6 +269,39 @@ class _HomePageState extends State<HomePage> {
           _index = startIndex;
         });
       }
+    }
+    return paths;
+  }
+
+  Future<void> _save() async {
+    if (_photos.isEmpty) return;
+    try {
+      final p = await _renderAll(toGallery: true);
+      _toast('${p.length} foto tersimpan di galeri (album Watermark Foto)');
+    } catch (e) {
+      _toast('Gagal menyimpan: $e');
+    }
+  }
+
+  Future<void> _share() async {
+    if (_photos.isEmpty) return;
+    try {
+      final p = await _renderAll(toGallery: false);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: p.map((e) => XFile(e, mimeType: 'image/png')).toList(),
+        ),
+      );
+    } catch (e) {
+      _toast('Gagal membagikan: $e');
+    }
+  }
+
+  Future<void> _openGallery() async {
+    try {
+      await Gal.open();
+    } catch (e) {
+      _toast('Tidak bisa membuka galeri: $e');
     }
   }
 
@@ -499,6 +535,26 @@ class _HomePageState extends State<HomePage> {
                 : (_photos.length > 1
                     ? 'Simpan semua (${_photos.length}) ke galeri'
                     : 'Simpan ke galeri')),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _saving ? null : _openGallery,
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Lihat galeri'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: (_photos.isEmpty || _saving) ? null : _share,
+                  icon: const Icon(Icons.share),
+                  label: const Text('Bagikan'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
