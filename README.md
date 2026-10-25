@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/33924375/README.md)
 # Watermark Foto
 
 Pilih foto dari galeri, tambahkan watermark jam, tanggal, dan lokasi (gaya Timemark), lalu simpan ke galeri.
@@ -15,3 +16,7 @@ Pilih foto dari galeri, tambahkan watermark jam, tanggal, dan lokasi (gaya Timem
 ## Fitur tampilan
 Setiap elemen bisa dimunculkan/disembunyikan lewat chip: Judul, Jam, Tanggal, Alamat, Koordinat, Logo, Teks pojok.
 Logo dipilih dari galeri (PNG transparan paling bagus), diletakkan di sebelah kiri kotak judul + jam, ukuran bisa diatur.
+
+## Banyak foto sekaligus
+Tombol pilih foto menerima banyak foto. Semua foto memakai pengaturan watermark yang sama (judul, jam, lokasi, logo, dll.).
+Tap thumbnail untuk melihat pratinjau tiap foto. Tombol "Simpan semua" memproses satu per satu dan menyimpan ke album "Watermark Foto".
