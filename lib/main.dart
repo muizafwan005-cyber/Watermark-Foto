@@ -65,8 +65,10 @@ class _HomePageState extends State<HomePage> {
   final _badgeCtrl = TextEditingController(text: 'Dokumentasi Kegiatan');
   final _wm = WmData();
 
-  File? _photo;
-  double _photoWidthPx = 1080;
+  List<File> _photos = [];
+  int _index = 0;
+  int _progress = 0;
+  File? get _photo => _photos.isEmpty ? null : _photos[_index];
   double? _lat;
   double? _lng;
 
@@ -84,7 +86,7 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_autoTime && mounted) setState(() => _now = DateTime.now());
+      if (_autoTime && !_saving && mounted) setState(() => _now = DateTime.now());
     });
   }
 
@@ -102,13 +104,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _pickPhoto() async {
-    final x = await _picker.pickImage(source: ImageSource.gallery);
-    if (x == null) return;
-    final file = File(x.path);
-    final img = await decodeImageFromList(await file.readAsBytes());
+    final xs = await _picker.pickMultiImage();
+    if (xs.isEmpty) return;
     setState(() {
-      _photo = file;
-      _photoWidthPx = img.width.toDouble();
+      _photos = xs.map((x) => File(x.path)).toList();
+      _index = 0;
     });
     if (_addressCtrl.text.trim().isEmpty) _fetchLocation();
   }
@@ -198,25 +198,51 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _save() async {
-    if (_photo == null) return;
-    setState(() => _saving = true);
+    if (_photos.isEmpty) return;
+    final startIndex = _index;
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    var ok = 0;
+    setState(() {
+      _now = DateTime.now(); // jam sama untuk semua foto
+      _saving = true;
+      _progress = 0;
+    });
     try {
-      final boundary = _boundaryKey.currentContext!.findRenderObject()
-          as RenderRepaintBoundary;
-      final ratio = (_photoWidthPx / boundary.size.width).clamp(1.0, 4.0);
-      final image = await boundary.toImage(pixelRatio: ratio);
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
       if (!await Gal.hasAccess()) await Gal.requestAccess();
-      await Gal.putImageBytes(
-        data!.buffer.asUint8List(),
-        album: 'Watermark Foto',
-        name: 'wm_${DateTime.now().millisecondsSinceEpoch}',
-      );
-      _toast('Tersimpan di galeri (album Watermark Foto)');
+      for (var i = 0; i < _photos.length; i++) {
+        await precacheImage(FileImage(_photos[i]), context);
+        setState(() {
+          _index = i;
+          _progress = i + 1;
+        });
+        await WidgetsBinding.instance.endOfFrame;
+        await Future.delayed(const Duration(milliseconds: 80));
+        final boundary = _boundaryKey.currentContext!.findRenderObject()
+            as RenderRepaintBoundary;
+        final decoded = await decodeImageFromList(await _photos[i].readAsBytes());
+        final widthPx = decoded.width.toDouble();
+        decoded.dispose();
+        final ratio = (widthPx / boundary.size.width).clamp(1.0, 4.0);
+        final image = await boundary.toImage(pixelRatio: ratio);
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        image.dispose();
+        await Gal.putImageBytes(
+          data!.buffer.asUint8List(),
+          album: 'Watermark Foto',
+          name: 'wm_${stamp}_${i + 1}',
+        );
+        ok++;
+      }
+      _toast('$ok foto tersimpan di galeri (album Watermark Foto)');
     } catch (e) {
-      _toast('Gagal menyimpan: $e');
+      _toast('Gagal menyimpan (berhasil $ok dari ${_photos.length}): $e');
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _index = startIndex;
+        });
+      }
     }
   }
 
@@ -250,11 +276,48 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(16),
         children: [
           FilledButton.icon(
-            onPressed: _pickPhoto,
+            onPressed: _saving ? null : _pickPhoto,
             icon: const Icon(Icons.photo_library),
-            label:
-                Text(_photo == null ? 'Pilih foto dari galeri' : 'Ganti foto'),
+            label: Text(_photos.isEmpty
+                ? 'Pilih foto (bisa banyak sekaligus)'
+                : 'Ganti foto (${_photos.length} dipilih)'),
           ),
+          if (_photos.length > 1) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Foto ${_index + 1} dari ${_photos.length} - pengaturan berlaku untuk semua foto',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 64,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _photos.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 6),
+                itemBuilder: (_, i) => GestureDetector(
+                  onTap: _saving ? null : () => setState(() => _index = i),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: i == _index
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.transparent,
+                        width: 3,
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.file(_photos[i],
+                          width: 64, height: 58, fit: BoxFit.cover,
+                          cacheWidth: 160),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           if (_photo != null)
             RepaintBoundary(
@@ -262,7 +325,7 @@ class _HomePageState extends State<HomePage> {
               child: LayoutBuilder(
                 builder: (context, c) => Stack(
                   children: [
-                    Image.file(_photo!,
+                    Image.file(_photo!, key: ValueKey(_photo!.path),
                         width: c.maxWidth, fit: BoxFit.fitWidth),
                     Positioned.fill(
                       child: WatermarkOverlay(width: c.maxWidth, d: _wm),
@@ -408,7 +471,11 @@ class _HomePageState extends State<HomePage> {
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.save_alt),
-            label: const Text('Simpan ke galeri'),
+            label: Text(_saving
+                ? 'Menyimpan $_progress/${_photos.length}...'
+                : (_photos.length > 1
+                    ? 'Simpan semua (${_photos.length}) ke galeri'
+                    : 'Simpan ke galeri')),
           ),
         ],
       ),
