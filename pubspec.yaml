@@ -1,7 +1,7 @@
 name: watermark_foto
 description: Tambah watermark jam dan lokasi ke foto dari galeri.
 publish_to: 'none'
-version: 1.5.0+5
+version: 1.6.0+6
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
