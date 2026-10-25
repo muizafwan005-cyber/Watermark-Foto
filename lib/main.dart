@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:gal/gal.dart';
@@ -298,6 +300,22 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _openGallery() async {
+    // Cara 1: buka daftar gambar lewat intent VIEW (paling kompatibel).
+    if (Platform.isAndroid) {
+      try {
+        final intent = AndroidIntent(
+          action: 'action_view',
+          data: 'content://media/external/images/media',
+          type: 'image/*',
+          flags: <int>[Flag.FLAG_ACTIVITY_NEW_TASK],
+        );
+        await intent.launch();
+        return;
+      } catch (_) {
+        // lanjut ke cara 2
+      }
+    }
+    // Cara 2: bawaan paket gal.
     try {
       await Gal.open();
     } catch (e) {
@@ -330,7 +348,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     _syncData();
     return Scaffold(
-      appBar: AppBar(title: const Text('Watermark Foto')),
+      appBar: AppBar(title: const Text('Watermark Foto  v1.5')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
