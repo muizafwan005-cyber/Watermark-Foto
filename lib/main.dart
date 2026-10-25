@@ -72,6 +72,7 @@ class _HomePageState extends State<HomePage> {
   List<File> _photos = [];
   int _index = 0;
   int _progress = 0;
+  List<String> _results = [];
   File? get _photo => _photos.isEmpty ? null : _photos[_index];
   double? _lat;
   double? _lng;
@@ -279,6 +280,7 @@ class _HomePageState extends State<HomePage> {
     if (_photos.isEmpty) return;
     try {
       final p = await _renderAll(toGallery: true);
+      if (mounted) setState(() => _results = p);
       _toast('${p.length} foto tersimpan di galeri (album Watermark Foto)');
     } catch (e) {
       _toast('Gagal menyimpan: $e');
@@ -297,6 +299,17 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       _toast('Gagal membagikan: $e');
     }
+  }
+
+  void _showResults() {
+    if (_results.isEmpty) {
+      _toast('Belum ada hasil. Tekan Simpan dulu.');
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) =>
+          ResultsPage(paths: _results, onOpenGallery: _openGallery),
+    ));
   }
 
   Future<void> _openGallery() async {
@@ -348,7 +361,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     _syncData();
     return Scaffold(
-      appBar: AppBar(title: const Text('Watermark Foto  v1.5')),
+      appBar: AppBar(title: const Text('Watermark Foto  v1.6')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -559,9 +572,9 @@ class _HomePageState extends State<HomePage> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _saving ? null : _openGallery,
+                  onPressed: _saving ? null : _showResults,
                   icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('Lihat galeri'),
+                  label: const Text('Lihat hasil'),
                 ),
               ),
               const SizedBox(width: 8),
@@ -701,6 +714,108 @@ class WatermarkOverlay extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+
+/// Daftar hasil foto (tampil di dalam aplikasi, tanpa membuka galeri HP).
+class ResultsPage extends StatelessWidget {
+  const ResultsPage(
+      {super.key, required this.paths, required this.onOpenGallery});
+
+  final List<String> paths;
+  final VoidCallback onOpenGallery;
+
+  Future<void> _shareAll() => SharePlus.instance.share(ShareParams(
+      files: paths.map((e) => XFile(e, mimeType: 'image/png')).toList()));
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Hasil (${paths.length})'),
+        actions: [
+          IconButton(
+            tooltip: 'Bagikan semua',
+            icon: const Icon(Icons.share),
+            onPressed: _shareAll,
+          ),
+          IconButton(
+            tooltip: 'Coba buka galeri HP',
+            icon: const Icon(Icons.photo_library_outlined),
+            onPressed: onOpenGallery,
+          ),
+        ],
+      ),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(8),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+        ),
+        itemCount: paths.length,
+        itemBuilder: (_, i) => GestureDetector(
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => ViewerPage(paths: paths, index: i),
+          )),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(File(paths[i]), fit: BoxFit.cover, cacheWidth: 500),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Penampil foto layar penuh: geser kiri/kanan, cubit untuk zoom.
+class ViewerPage extends StatefulWidget {
+  const ViewerPage({super.key, required this.paths, required this.index});
+
+  final List<String> paths;
+  final int index;
+
+  @override
+  State<ViewerPage> createState() => _ViewerPageState();
+}
+
+class _ViewerPageState extends State<ViewerPage> {
+  late final PageController _pc = PageController(initialPage: widget.index);
+  late int _i = widget.index;
+
+  @override
+  void dispose() {
+    _pc.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text('${_i + 1} / ${widget.paths.length}'),
+        actions: [
+          IconButton(
+            tooltip: 'Bagikan foto ini',
+            icon: const Icon(Icons.share),
+            onPressed: () => SharePlus.instance.share(ShareParams(
+                files: [XFile(widget.paths[_i], mimeType: 'image/png')])),
+          ),
+        ],
+      ),
+      body: PageView.builder(
+        controller: _pc,
+        itemCount: widget.paths.length,
+        onPageChanged: (i) => setState(() => _i = i),
+        itemBuilder: (_, i) => InteractiveViewer(
+          child: Center(child: Image.file(File(widget.paths[i]))),
+        ),
+      ),
     );
   }
 }
